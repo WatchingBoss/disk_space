@@ -3,4 +3,9 @@
 
 #include "inc.h"
 
+extern void * xrealloc(void *, size_t);
+extern void * xmalloc(size_t);
+extern void user_error(char *, ...);
+extern void sys_error(char *);
+
 #endif
