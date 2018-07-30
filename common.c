@@ -7,7 +7,7 @@
 void * xrealloc(void *ptr, size_t bytes)
 {
 	if( !(ptr = realloc(ptr, bytes)))
-		perror("realloc in xrealloc error");
+		perror("xrealloc: realloc error");
 	return ptr;
 }
 
@@ -15,8 +15,16 @@ void * xmalloc(size_t bytes)
 {
 	void *ptr = malloc(bytes);
 	if(!ptr)
-		perror("malloc in xmalloc error");
+		perror("xmalloc: realloc error");
 	return ptr;
+}
+
+void log_error(char *e, ...)
+{
+	va_list args;
+	va_start(args, e);
+	vprintf(e, args);
+	va_end(args);
 }
 
 void user_error(char *e, ...)
