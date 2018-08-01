@@ -24,8 +24,18 @@ size_t get_size_file_system(char *fs)
 	size_t block_size = 0;
 	char path[PATH_SIZE] = {0};
 
+//	struct statvfs fs_stat;
+
 	if(fs[0] == '/' && fs[1] == 'd')
 	{
+		int fd = open(fs, O_RDONLY);
+		if(fd < 0) sys_error("get_size_file_system: open");
+		unsigned long int size = 0;
+		if(ioctl(fd, BLKGETSIZE, &size) < 0) sys_error("get_size_file_system: ioctl");
+		size /= 2;
+		printf("%s: %ld\n", fs, size);
+		close(fd);
+
 		char temp_t[PATH_SIZE] = {0};
 		memcpy(temp_t, &(fs[5]), PATH_SIZE);
 

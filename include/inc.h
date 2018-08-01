@@ -8,7 +8,14 @@
 #include <string.h>
 
 #include <unistd.h>
+#include <fcntl.h>
+
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
+#include <sys/ioctl.h>
+
+#include <linux/fs.h> // BLKGETSIZE
 
 #include "disk.h"
 #include "common.h"
