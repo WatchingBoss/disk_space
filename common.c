@@ -33,6 +33,7 @@ void user_error(char *e, ...)
 	va_start(args, e);
 	vprintf(e, args);
 	va_end(args);
+	putchar('\n');
 	exit(EXIT_FAILURE);
 }
 

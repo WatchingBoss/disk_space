@@ -5,33 +5,37 @@
 
 #include "include/inc.h"
 
-#define PATH_SIZE 80
-#define MAX_SIZE 15
-
-void get_size_file_system(char *mon, size_t *bs, size_t *ubs, size_t *abs, size_t *pubs)
+#define OPTIONS "ah::"
+int main(int argc, char *argv[])
 {
-	struct statvfs s_fs;
-	if(statvfs(mon, &s_fs))
-		sys_error("get_size_file_system: statvfs error");
+	char option = 0;
+	sOptions myOpt;
+	myOpt.print_all_mounts = false;
+	myOpt.human_readability = false;
 
-	*bs = (s_fs.f_bsize / 1000) * s_fs.f_blocks;
+	while( (option = getopt(argc, argv, OPTIONS)) != -1)
+	{
+		switch(option)
+		{
+			case 'a':
+				myOpt.print_all_mounts = true;
+				break;
+			case 'h':
+				myOpt.human_readability = true;
+				break;
+			case '?':
+				user_error("Unknown option %c", option);
+				break;
+			default:
+				break;
+		}
+	}
 
-	if(*bs)
-	{
-		*abs = (s_fs.f_bsize / 1000) * s_fs.f_bavail;
-		*ubs = *bs - *abs;
-		float per = (float)*ubs / (float)*bs;
-		*pubs = (size_t)(per * 100);
-		if(*ubs && !(*pubs))
-			*pubs = 1;
-	}
-	else
-	{
-		*abs = 0;
-		*ubs = 0;
-		*pubs = 0;
-	}
+	get_input(argc, argv, &myOpt);
+	
+	return 0;
 }
+#undef OPTIONS
  
 void put_title(char ***fs, char ***mon, char ***bs, char ***used, char ***avail,
 			   char***percent, size_t *l, sOptions *myOpt)
@@ -87,8 +91,37 @@ void put_title(char ***fs, char ***mon, char ***bs, char ***used, char ***avail,
 	*percent = per_used_bs_str;
 }
 
-void get_info_mounted_file_systems(char ***fs, char ***mon, size_t *line, char ***bs,
-								   char ***ubs, char ***abs, char ***pubs, sOptions *myOpt)
+void get_size_file_system(char *mon, size_t *bs, size_t *ubs, size_t *abs, size_t *pubs)
+{
+	struct statvfs s_fs;
+	if(statvfs(mon, &s_fs))
+	{
+		printf("%s\n", mon);
+		sys_error("get_size_file_system: statvfs error");
+	}
+
+	*bs = (s_fs.f_bsize / 1000) * s_fs.f_blocks;
+
+	if(*bs)
+	{
+		*abs = (s_fs.f_bsize / 1000) * s_fs.f_bavail;
+		*ubs = *bs - *abs;
+		float per = (float)*ubs / (float)*bs;
+		*pubs = (size_t)(per * 100);
+		if(*ubs && !(*pubs))
+			*pubs = 1;
+	}
+	else
+	{
+		*abs = 0;
+		*ubs = 0;
+		*pubs = 0;
+	}
+}
+
+void get_info_mounted_file_systems(char ***fs, char ***mon, size_t *amount, char ***bs,
+								   char ***ubs, char ***abs, char ***pubs, sOptions *myOpt,
+								   char files[][PATH_SIZE])
 {
 	char
 		**filesystem = NULL, **mountedon = NULL, **bs_str = NULL,
@@ -99,6 +132,7 @@ void get_info_mounted_file_systems(char ***fs, char ***mon, size_t *line, char *
 		sys_error("info_for_all_files error: fopen error");
 
 	size_t l = 0;
+	size_t number = 0;
 
 	put_title(&filesystem, &mountedon, &bs_str, &used_bs_str, &avail_bs_str,
 			  &per_used_bs_str, &l, myOpt);
@@ -108,85 +142,102 @@ void get_info_mounted_file_systems(char ***fs, char ***mon, size_t *line, char *
 	{
 		if(!(temp[0][0]))
 			break;
+		bool store_this = false;
 
-		char temp_bs_str[MAX_SIZE] = {0};
-		char temp_used_bs_str[MAX_SIZE] = {0};
-		char temp_avail_bs_str[MAX_SIZE] = {0};
-		char temp_used_perbs_str[MAX_SIZE] = {0};
-		get_size_file_system(temp[1], &block_size, &used_bs, &avail_bs, &per_used_bs);
-
-		if(block_size && myOpt->human_readability)
+		if(!files)
+			store_this = true;
+		else if(files && !strcmp(files[number], temp[0]))
 		{
-			if(block_size >= 1000000)
+			if(fseek(fp, 0, SEEK_SET))
+				sys_error("get_info_mounted_file_systems: fseek error");
+			store_this = true;
+			++number;
+		}
+
+		if(store_this)
+		{
+			char temp_bs_str[MAX_SIZE] = {0};
+			char temp_used_bs_str[MAX_SIZE] = {0};
+			char temp_avail_bs_str[MAX_SIZE] = {0};
+			char temp_used_perbs_str[MAX_SIZE] = {0};
+			get_size_file_system(temp[1], &block_size, &used_bs, &avail_bs, &per_used_bs);
+
+			if(block_size && myOpt->human_readability)
 			{
-				float human_bs = (float)block_size / 1000000;
-				float human_ubs = (float)used_bs / 1000000;
-				float human_abs = (float)avail_bs / 1000000;
-				snprintf(temp_bs_str, MAX_SIZE, "%0.1fG", human_bs);
-				snprintf(temp_used_bs_str, MAX_SIZE, "%0.1fG", human_ubs);
-				snprintf(temp_avail_bs_str, MAX_SIZE, "%0.1fG", human_abs);
+				if(block_size >= 1000000)
+				{
+					float human_bs = (float)block_size / 1000000;
+					float human_ubs = (float)used_bs / 1000000;
+					float human_abs = (float)avail_bs / 1000000;
+					snprintf(temp_bs_str, MAX_SIZE, "%0.1fG", human_bs);
+					snprintf(temp_used_bs_str, MAX_SIZE, "%0.1fG", human_ubs);
+					snprintf(temp_avail_bs_str, MAX_SIZE, "%0.1fG", human_abs);
+				}
+				else if(block_size >= 1000)
+				{
+					float human_bs = (float)block_size / 1000;
+					float human_ubs = (float)used_bs / 1000;
+					float human_abs = (float)avail_bs / 1000;
+					snprintf(temp_bs_str, MAX_SIZE, "%0.1fM", human_bs);
+					snprintf(temp_used_bs_str, MAX_SIZE, "%0.1fM", human_ubs);
+					snprintf(temp_avail_bs_str, MAX_SIZE, "%0.1fM", human_abs);
+				}
+				else
+				{
+					snprintf(temp_bs_str, MAX_SIZE, "%ldK", block_size);
+					snprintf(temp_used_bs_str, MAX_SIZE, "%ldK", used_bs);
+					snprintf(temp_avail_bs_str, MAX_SIZE, "%ldK", avail_bs);
+				}
+
+				snprintf(temp_used_perbs_str, MAX_SIZE, "%ld%c", per_used_bs, 37);
 			}
-			else if(block_size >= 1000)
+			else if(block_size)
 			{
-				float human_bs = (float)block_size / 1000;
-				float human_ubs = (float)used_bs / 1000;
-				float human_abs = (float)avail_bs / 1000;
-				snprintf(temp_bs_str, MAX_SIZE, "%0.1fM", human_bs);
-				snprintf(temp_used_bs_str, MAX_SIZE, "%0.1fM", human_ubs);
-				snprintf(temp_avail_bs_str, MAX_SIZE, "%0.1fM", human_abs);
+				snprintf(temp_bs_str, MAX_SIZE, "%ld", block_size);
+				snprintf(temp_used_bs_str, MAX_SIZE, "%ld", used_bs);
+				snprintf(temp_avail_bs_str, MAX_SIZE, "%ld", avail_bs);
+				snprintf(temp_used_perbs_str, MAX_SIZE, "%ld%c", per_used_bs, 37);
 			}
 			else
 			{
-				snprintf(temp_bs_str, MAX_SIZE, "%ldK", block_size);
-				snprintf(temp_used_bs_str, MAX_SIZE, "%ldK", used_bs);
-				snprintf(temp_avail_bs_str, MAX_SIZE, "%ldK", avail_bs);
+				snprintf(temp_bs_str, 2, "0");
+				snprintf(temp_used_bs_str, 2, "0");
+				snprintf(temp_avail_bs_str, 2, "0");
+				snprintf(temp_used_perbs_str, 3, "0%c", 37);
 			}
 
-			snprintf(temp_used_perbs_str, MAX_SIZE, "%ld%c", per_used_bs, 37);
-		}
-		else if(block_size)
-		{
-			snprintf(temp_bs_str, MAX_SIZE, "%ld", block_size);
-			snprintf(temp_used_bs_str, MAX_SIZE, "%ld", used_bs);
-			snprintf(temp_avail_bs_str, MAX_SIZE, "%ld", avail_bs);
-			snprintf(temp_used_perbs_str, MAX_SIZE, "%ld%c", per_used_bs, 37);
-		}
-		else
-		{
-			snprintf(temp_bs_str, 2, "0");
-			snprintf(temp_used_bs_str, 2, "0");
-			snprintf(temp_avail_bs_str, 2, "0");
-			snprintf(temp_used_perbs_str, 3, "0%c", 37);
-		}
+			if(block_size || myOpt->print_all_mounts)
+			{
+				filesystem = xrealloc(filesystem, sizeof *filesystem * (l + 1));
+				bs_str = xrealloc(bs_str, sizeof *bs_str * (l + 1));
+				used_bs_str = xrealloc(used_bs_str, sizeof *used_bs_str * (l + 1));
+				avail_bs_str = xrealloc(avail_bs_str, sizeof *avail_bs_str * (l + 1));
+				per_used_bs_str = xrealloc(per_used_bs_str, sizeof *per_used_bs_str * (l + 1));
+				mountedon = xrealloc(mountedon, sizeof *mountedon * (l + 1));
 
-		if(block_size || myOpt->print_all_mounts)
-		{
-			filesystem = xrealloc(filesystem, sizeof *filesystem * (l + 1));
-			bs_str = xrealloc(bs_str, sizeof *bs_str * (l + 1));
-			used_bs_str = xrealloc(used_bs_str, sizeof *used_bs_str * (l + 1));
-			avail_bs_str = xrealloc(avail_bs_str, sizeof *avail_bs_str * (l + 1));
-			per_used_bs_str = xrealloc(per_used_bs_str, sizeof *per_used_bs_str * (l + 1));
-			mountedon = xrealloc(mountedon, sizeof *mountedon * (l + 1));
+				*(filesystem + l) = xmalloc(strlen(temp[0]) + 1);
+				*(bs_str + l) = xmalloc(strlen(temp_bs_str) + 1);
+				*(used_bs_str + l) = xmalloc(strlen(temp_used_bs_str) + 1);
+				*(avail_bs_str + l) = xmalloc(strlen(temp_avail_bs_str) + 1);
+				*(per_used_bs_str + l) = xmalloc(strlen(temp_used_perbs_str) + 1);
+				*(mountedon + l) = xmalloc(strlen(temp[1]) + 1);
 
-			*(filesystem + l) = xmalloc(strlen(temp[0]) + 1);
-			*(bs_str + l) = xmalloc(strlen(temp_bs_str) + 1);
-			*(used_bs_str + l) = xmalloc(strlen(temp_used_bs_str) + 1);
-			*(avail_bs_str + l) = xmalloc(strlen(temp_avail_bs_str) + 1);
-			*(per_used_bs_str + l) = xmalloc(strlen(temp_used_perbs_str) + 1);
-			*(mountedon + l) = xmalloc(strlen(temp[1]) + 1);
-
-			strcpy(*(filesystem + l), temp[0]);
-			strcpy(*(bs_str + l), temp_bs_str);
-			strcpy(*(used_bs_str + l), temp_used_bs_str);
-			strcpy(*(avail_bs_str + l), temp_avail_bs_str);
-			strcpy(*(per_used_bs_str + l), temp_used_perbs_str);
-			strcpy(*(mountedon + l), temp[1]);
+				strcpy(*(filesystem + l), temp[0]);
+				strcpy(*(bs_str + l), temp_bs_str);
+				strcpy(*(used_bs_str + l), temp_used_bs_str);
+				strcpy(*(avail_bs_str + l), temp_avail_bs_str);
+				strcpy(*(per_used_bs_str + l), temp_used_perbs_str);
+				strcpy(*(mountedon + l), temp[1]);
 			
-			l++;
+				l++;
+			}
 		}
 
-		char c = 0;
-		while( (c = fgetc(fp)) != '\n');
+		if(!store_this || !files)
+		{
+			char c = 0;
+			while( (c = fgetc(fp)) != '\n');
+		}
 		memset(temp, 0, sizeof temp);
 	}
 	fclose(fp);
@@ -197,7 +248,7 @@ void get_info_mounted_file_systems(char ***fs, char ***mon, size_t *line, char *
 	*abs = avail_bs_str;
 	*pubs = per_used_bs_str;
 	*mon = mountedon;
-	*line = l;
+	*amount = l;
 }
 
 void colomn_width(size_t num, sOptions *myOpt,
@@ -263,56 +314,30 @@ void colomn_width(size_t num, sOptions *myOpt,
 			pubs_b[i][j] = ' ';
 }
 
-void get_size_fs(char fs[][PATH_SIZE], char mon[][PATH_SIZE], size_t num,
-				 char ***bs, char ***ubs, char ***abs, char ***pubs, sOptions *myOpt)
+void free_memory(char ***filesystem, char ***block_size, char ***used_bs, char ***avail_bs,
+				 char ***per_bs, char ***mountedon, size_t amount)
 {
-	for(size_t i = 0; i < num; ++i)
+	for(size_t i = 0; i < amount; ++i)
 	{
-		struct statvfs s_fs;
-		if(statvfs(mon[i], &s_fs))
-			sys_error("get_size_fs: statvfs error");
-		printf("%s: %ld - %ld - %ld\n", fs[i], s_fs.f_bsize, s_fs.f_blocks, s_fs.f_bfree);
+		free(*(*filesystem + i));
+		free(*(*block_size + i));
+		free(*(*used_bs + i));
+		free(*(*avail_bs + i));
+		free(*(*per_bs + i));
+		free(*(*mountedon + i));
 	}
+	free(*filesystem);
+	free(*block_size);
+	free(*used_bs);
+	free(*avail_bs);
+	free(*per_bs);
+	free(*mountedon);
 }
 
-void find_mounted_path(const char files[][PATH_SIZE], char mon[][PATH_SIZE], size_t num)
+
+void printing_col(char **filesystem, char **block_size, char **used_bs, char **avail_bs,
+				  char **per_bs, char **mountedon, size_t amount, sOptions *myOpt)
 {
-	FILE *fp = fopen("/proc/mounts", "r");
-	if(!fp) sys_error("find_mounted_path: fopen error");
-	char temp[2][PATH_SIZE] = {0};
-	
-	for(size_t i = 0; i < num;)
-	{
-		fscanf(fp, "%s %s", temp[0], temp[1]);
-		if(!temp[0]) break;
-
-		if(!strcmp(files[i], temp[0]))
-			memcpy(mon[i++], temp[1], PATH_SIZE);
-
-		char c = 0;
-		while( (c = fgetc(fp)) != '\n');
-	}
-}
-
-void info_for_current_files(char files[][PATH_SIZE], size_t num, sOptions *myOpt)
-{
-	char mountedon[num][PATH_SIZE];
-	memset(mountedon, 0, sizeof mountedon);
-	char **block_size = NULL, **used_bs = NULL, **avail_bs = NULL, **per_bs = NULL;
-
-//	find_mounted_path(files, mountedon, num);
-	get_size_fs(files, mountedon, num, &block_size, &used_bs, &avail_bs, &per_bs, myOpt);
-}
-
-void info_for_all_files(sOptions *myOpt)
-{
-	char **filesystem = NULL, **mountedon = NULL;
-	size_t amount = 0;
-	char **block_size = NULL, **used_bs = NULL, **avail_bs = NULL, **per_bs = NULL;
-
-	get_info_mounted_file_systems(&filesystem, &mountedon, &amount, &block_size,
-								  &used_bs, &avail_bs, &per_bs, myOpt);
-
 	char fs_b[amount][PATH_SIZE];
 	memset(fs_b, 0, sizeof fs_b);
 	char bs_b[amount][MAX_SIZE];
@@ -335,22 +360,37 @@ void info_for_all_files(sOptions *myOpt)
 			   abs_b[i], avail_bs[i],
 			   pubs_b[i], per_bs[i],
 			   mountedon[i]);
+}
 
-	for(size_t i = 0; i < amount; ++i)
-	{
-		free(*(filesystem + i));
-		free(*(block_size + i));
-		free(*(used_bs + i));
-		free(*(avail_bs + i));
-		free(*(per_bs + i));
-		free(*(mountedon + i));
-	}
-	free(filesystem);
-	free(block_size);
-	free(used_bs);
-	free(avail_bs);
-	free(per_bs);
-	free(mountedon);
+void info_for_current_files(char files[][PATH_SIZE], size_t num, sOptions *myOpt)
+{
+	char **filesystem = NULL, **mountedon = NULL;
+	size_t amount = 0;
+	char **block_size = NULL, **used_bs = NULL, **avail_bs = NULL, **per_bs = NULL;
+
+	get_info_mounted_file_systems(&filesystem, &mountedon, &amount, &block_size,
+								  &used_bs, &avail_bs, &per_bs, myOpt, files);
+
+	if(amount - num == 1)
+		printing_col(filesystem, block_size, used_bs, avail_bs, per_bs, mountedon, amount, myOpt);
+	else
+		sys_error("Dissimilar number of paths");
+
+	free_memory(&filesystem, &block_size, &used_bs, &avail_bs, &per_bs, &mountedon, amount);
+}
+
+void info_for_all_files(sOptions *myOpt)
+{
+	char **filesystem = NULL, **mountedon = NULL;
+	size_t amount = 0;
+	char **block_size = NULL, **used_bs = NULL, **avail_bs = NULL, **per_bs = NULL;
+
+	get_info_mounted_file_systems(&filesystem, &mountedon, &amount, &block_size,
+								  &used_bs, &avail_bs, &per_bs, myOpt, NULL);
+
+	printing_col(filesystem, block_size, used_bs, avail_bs, per_bs, mountedon, amount, myOpt);
+
+	free_memory(&filesystem, &block_size, &used_bs, &avail_bs, &per_bs, &mountedon, amount);
 }
 
 int check_existence_file(const char *file)
@@ -384,35 +424,4 @@ void get_input(int argc, char *argv[], sOptions *myOpt)
 		info_for_current_files(files, f_num, myOpt);
 }
 
-#define OPTIONS "h::"
-int main(int argc, char *argv[])
-{
-	char option = 0;
-	sOptions myOpt;
-	myOpt.print_all_mounts = false;
-	myOpt.human_readability = false;
-
-	while( (option = getopt(argc, argv, OPTIONS)) != -1)
-	{
-		switch(option)
-		{
-			case 'h':
-				myOpt.human_readability = true;
-				break;
-			case 'a':
-				myOpt.print_all_mounts = true;
-				break;
-			case '?':
-				user_error("Unknown option %c", option);
-				break;
-			default:
-				break;
-		}
-	}
-
-	get_input(argc, argv, &myOpt);
-	
-	return 0;
-}
-#undef OPTIONS
 
